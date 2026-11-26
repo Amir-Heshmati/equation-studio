@@ -101,10 +101,17 @@ async function checkTouch() {
         await page.waitForFunction(({ selector, original }) =>
             document.querySelector(selector)?.getAttribute('x1') !== original, { selector: axisSelector, original });
         assert.ok(await axis.getAttribute('x1'));
-
-        await page.getByRole('button', { name: 'Reset view', exact: true }).tap();
-        await page.waitForFunction(({ selector, original }) =>
-            document.querySelector(selector)?.getAttribute('x1') === original, { selector: axisSelector, original });
+        await page.locator('.interactive-graph[data-dragging]').waitFor({ state: 'hidden' });
+        const reset = page.getByRole('button', { name: 'Reset view', exact: true });
+        await reset.evaluate(button => button.addEventListener('click', () => { button.dataset.testClicked = 'true'; }, { once: true }));
+        await reset.tap();
+        try {
+            await page.waitForFunction(({ selector, original }) =>
+                document.querySelector(selector)?.getAttribute('x1') === original, { selector: axisSelector, original }, { timeout: 5_000 });
+        } catch (error) {
+            throw new Error('Reset did not restore the axis. Expected ' + original + ', got ' + await axis.getAttribute('x1') +
+                '; click received: ' + await reset.getAttribute('data-test-clicked') + '; page errors: ' + errors.join('; '), { cause: error });
+        }
 
         const plottedLine = page.locator('.graph .left-line');
         const originalY = await plottedLine.getAttribute('y1');
@@ -112,8 +119,8 @@ async function checkTouch() {
         await page.getByRole('button', { name: 'Zoom in horizontally', exact: true }).tap();
         assert.notEqual(await plottedLine.getAttribute('x1'), originalX);
         assert.equal(await plottedLine.getAttribute('y1'), originalY);
-        await page.getByRole('button', { name: 'Reset view', exact: true }).tap();
-        assert.equal(await plottedLine.getAttribute('x1'), originalX);
+        await reset.tap();
+        await page.waitForFunction(expected => document.querySelector('.graph .left-line')?.getAttribute('x1') === expected, originalX);
         assert.deepEqual(errors, []);
         console.log('Touch emulation passed: keypad, plot, touch drag, horizontal zoom, and reset.');
     } finally {

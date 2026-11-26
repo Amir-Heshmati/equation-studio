@@ -4,7 +4,7 @@ export function connect(svg, dotnet) {
     const changes = [];
     let activePointer = null;
     let frame = 0;
-    let sending = false;
+    let sending = null;
 
     function coordinates(event) {
         const matrix = svg.getScreenCTM();
@@ -34,13 +34,13 @@ export function connect(svg, dotnet) {
     async function sendChanges() {
         frame = 0;
         const { mode, dx, dy } = changes.shift();
-        sending = true;
+        sending = dotnet.invokeMethodAsync('MoveGraph', mode, dx, dy);
         try {
-            await dotnet.invokeMethodAsync('MoveGraph', mode, dx, dy);
+            await sending;
         } catch (error) {
             if (!controller.signal.aborted) console.error('Graph input failed.', error);
         } finally {
-            sending = false;
+            sending = null;
             requestUpdate();
         }
     }
@@ -94,11 +94,27 @@ export function connect(svg, dotnet) {
     svg.addEventListener('lostpointercapture', end, options);
     svg.addEventListener('keydown', keydown, options);
 
+    function stopPendingMotion() {
+        if (frame) cancelAnimationFrame(frame);
+        frame = 0;
+        changes.length = 0;
+        const activeId = activePointer?.id;
+        activePointer = null;
+        delete svg.dataset.dragging;
+        if (activeId !== undefined && svg.hasPointerCapture(activeId)) {
+            svg.releasePointerCapture(activeId);
+        }
+    }
+
     return {
+        async cancelMotion() {
+            // A final animation frame must not pan a view which has just been reset.
+            stopPendingMotion();
+            if (sending) await sending.catch(() => {});
+        },
         disconnect() {
             controller.abort();
-            if (frame) cancelAnimationFrame(frame);
-            changes.length = 0;
+            stopPendingMotion();
         }
     };
 }

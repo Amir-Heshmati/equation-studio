@@ -93,7 +93,7 @@
                         <button type="button" aria-label="Zoom in vertically" @onclick="() => view.ZoomY(-ZoomButtonDrag)">+</button>
                     </div>
                 </div>
-                <button class="graph-control reset-graph" type="button" @onclick="view.Reset">
+                <button class="graph-control reset-graph" type="button" @onclick="ResetViewAsync">
                     <span class="graph-control-label">Reset view</span>
                     <span class="reset-icon" aria-hidden="true">↺</span>
                 </button>
@@ -173,6 +173,16 @@
         module = await JavaScript.InvokeAsync<IJSObjectReference>("import", "./js/graph-gestures.js");
         callback = DotNetObjectReference.Create(this);
         connection = await module.InvokeAsync<IJSObjectReference>("connect", graphElement, callback);
+    }
+
+    private async Task ResetViewAsync()
+    {
+        if (connection is not null)
+        {
+            await connection.InvokeVoidAsync("cancelMotion");
+        }
+
+        viewport?.Reset();
     }
 
     [JSInvokable]
