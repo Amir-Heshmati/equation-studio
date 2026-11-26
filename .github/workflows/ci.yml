@@ -47,7 +47,7 @@ jobs:
       - uses: actions/upload-pages-artifact@v4
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         with:
-          path: ${ runner.temp }}/site/equation-studio
+          path: ${{ runner.temp }}/site/equation-studio
 
   deploy:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -59,7 +59,7 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }}
     concurrency:
       group: github-pages
       cancel-in-progress: false
