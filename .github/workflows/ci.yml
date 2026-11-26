@@ -1,0 +1,69 @@
+name: Build, test and publish
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+          global-json-file: global.json
+      - run: dotnet restore
+      - run: dotnet build --configuration Release --no-restore --warnaserror
+      - run: dotnet test --configuration Release --no-build
+      - name: Build the static site
+        run: |
+          dotnet publish src/EquationStudio.Web -c Release --no-restore -p:WasmBuildNative=false -o "$RUNNER_TEMP/published"
+          mkdir -p "$RUNNER_TEMP/site"
+          mv "$RUNNER_TEMP/published/wwwroot" "$RUNNER_TEMP/site/equation-studio"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - run: npm ci
+        working-directory: tests/browser
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/browser
+      - name: Verify desktop and touch flows and capture the README image
+        run: |
+          python3 -m http.server 5274 --bind 127.0.0.1 --directory "$RUNNER_TEMP/site" &
+          server=$!
+          trap 'kill "$server"' EXIT
+          for attempt in {1..20}; do
+            if curl --fail --silent --output /dev/null http://127.0.0.1:5274/equation-studio/; then break; fi
+            sleep 0.5
+          done
+          node tests/browser/smoke.mjs http://127.0.0.1:5274/equation-studio/ "$RUNNER_TEMP/site/equation-studio/preview.png"
+      - uses: actions/upload-pages-artifact@v4
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        with:
+          path: ${ runner.temp }}/site/equation-studio
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    steps:
+      - name: Deploy verified site
+        id: deployment
+        uses: actions/deploy-pages@v4

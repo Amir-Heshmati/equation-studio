@@ -1,0 +1,310 @@
+@using System.Globalization
+@using Microsoft.JSInterop
+@using EquationStudio.Core
+@implements IAsyncDisposable
+@inject IJSRuntime JavaScript
+
+<figure class="graph">
+    @if (viewport is { } view)
+    {
+        <svg @ref="graphElement" class="interactive-graph" viewBox="0 0 600 346" role="img" tabindex="0"
+             aria-label="@GraphSummary" aria-describedby="graph-help">
+            <defs>
+                <clipPath id="plot-window"><rect x="36" y="28" width="528" height="264" /></clipPath>
+            </defs>
+            <rect x="36" y="28" width="528" height="264" fill="transparent" />
+            @if (PlottedLine?.Kind == LineEquationKind.AllPoints)
+            {
+                <rect class="solution-plane" x="36" y="28" width="528" height="264" />
+            }
+            @foreach (var (tick, index) in view.XTicks().Select((tick, index) => (tick, index)))
+            {
+                string x = Coordinate(view.ProjectX(tick));
+                <line class="@(tick == 0 ? "axis" : "grid-line")" x1="@x" x2="@x" y1="28" y2="292" />
+                @if (tick != 0 && index % 2 == 0)
+                {
+                    <g><text x="@x" y="310" text-anchor="middle" class="axis-label">@TickLabel(tick)</text></g>
+                }
+            }
+            @foreach (double tick in view.YTicks())
+            {
+                string y = Coordinate(view.ProjectY(tick));
+                <line class="@(tick == 0 ? "axis" : "grid-line")" x1="36" x2="564" y1="@y" y2="@y" />
+                @if (tick != 0)
+                {
+                    <g><text x="42" y="@y" dy="-.28em" class="axis-label">@TickLabel(tick)</text></g>
+                }
+            }
+            <g clip-path="url(#plot-window)">
+                @foreach (var (line, cssClass) in Lines())
+                {
+                    if (Endpoints(line, view) is { } segment)
+                    {
+                        <line class="@cssClass"
+                              x1="@Coordinate(view.ProjectX(segment.Start.X))" y1="@Coordinate(view.ProjectY(segment.Start.Y))"
+                              x2="@Coordinate(view.ProjectX(segment.End.X))" y2="@Coordinate(view.ProjectY(segment.End.Y))" />
+                    }
+                }
+                @foreach (var point in Markers())
+                {
+                    if (InRange(point.X, view.MinX, view.MaxX) && InRange(point.Y, view.MinY, view.MaxY))
+                    {
+                        <circle class="intersection" cx="@Coordinate(view.ProjectX(point.X))"
+                                cy="@Coordinate(view.ProjectY(point.Y))" r="5" />
+                    }
+                }
+            </g>
+            @if (InRange(0, view.MinY, view.MaxY))
+            {
+                string xAxis = Coordinate(view.ProjectY(0));
+                <line data-graph-gesture="x" class="axis-grab" x1="36" x2="564" y1="@xAxis" y2="@xAxis" />
+            }
+            @if (InRange(0, view.MinX, view.MaxX))
+            {
+                string yAxis = Coordinate(view.ProjectX(0));
+                <line data-graph-gesture="y" class="axis-grab" x1="@yAxis" x2="@yAxis" y1="28" y2="292" />
+            }
+            @if (InRange(0, view.MinX, view.MaxX) && InRange(0, view.MinY, view.MaxY))
+            {
+                <g><text x="@Coordinate(view.ProjectX(0) + 7)" y="@Coordinate(view.ProjectY(0) + 15)" class="axis-label">0</text></g>
+            }
+            <g class="axis-handle" data-graph-gesture="y" aria-hidden="true">
+                <rect x="36" y="4" width="44" height="22" rx="4" />
+                <text x="58" y="20" text-anchor="middle">y ↕</text>
+            </g>
+            <g class="axis-handle" data-graph-gesture="x" aria-hidden="true">
+                <rect x="520" y="317" width="44" height="22" rx="4" />
+                <text x="542" y="333" text-anchor="middle">x ↔</text>
+            </g>
+        </svg>
+        <div class="graph-controls">
+            <div class="graph-toolbar" role="group" aria-label="Graph controls">
+                <div class="graph-control" role="group" aria-label="X axis zoom">
+                    <span class="graph-control-label">X Zoom</span>
+                    <div class="zoom-actions">
+                        <button type="button" aria-label="Zoom out horizontally" @onclick="() => view.ZoomX(-ZoomButtonDrag)">−</button>
+                        <button type="button" aria-label="Zoom in horizontally" @onclick="() => view.ZoomX(ZoomButtonDrag)">+</button>
+                    </div>
+                </div>
+                <div class="graph-control" role="group" aria-label="Y axis zoom">
+                    <span class="graph-control-label">Y Zoom</span>
+                    <div class="zoom-actions">
+                        <button type="button" aria-label="Zoom out vertically" @onclick="() => view.ZoomY(ZoomButtonDrag)">−</button>
+                        <button type="button" aria-label="Zoom in vertically" @onclick="() => view.ZoomY(-ZoomButtonDrag)">+</button>
+                    </div>
+                </div>
+                <button class="graph-control reset-graph" type="button" @onclick="view.Reset">
+                    <span class="graph-control-label">Reset view</span>
+                    <span class="reset-icon" aria-hidden="true">↺</span>
+                </button>
+            </div>
+            <p id="graph-help">Drag the graph to move it. Drag either axis to zoom.
+                <span class="graph-keyboard-help">Use arrow keys to move the view and Shift + arrow keys to zoom.</span>
+            </p>
+        </div>
+    }
+    else
+    {
+        <p class="empty-graph">This graph is outside the supported drawing scale. Exact values are shown below.</p>
+    }
+    <figcaption>
+        @if (Solution is { } solved)
+        {
+            <span>Left <strong>y = @solved.Left</strong></span>
+            <span>Right <strong>y = @solved.Right</strong></span>
+        }
+        <span>@GraphSummary</span>
+    </figcaption>
+    @if (viewport is { } currentView && HiddenParallelGap(currentView) is { } gap)
+    {
+        <p class="graph-scale-note">
+            <strong>The parallel lines are too close to distinguish at this scale.</strong>
+            Their exact vertical separation is <code>@gap</code>, so they never intersect.
+        </p>
+    }
+</figure>
+
+@code {
+    private const double ZoomButtonDrag = 55;
+    private ElementReference graphElement;
+    private GraphViewport? viewport;
+    private IJSObjectReference? module;
+    private IJSObjectReference? connection;
+    private DotNetObjectReference<EquationGraph>? callback;
+    private Task? initializing;
+    private bool disposed;
+
+    [Parameter]
+    public LinearSolution? Solution { get; set; }
+
+    [Parameter]
+    public LineEquation? PlottedLine { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (viewport is not null)
+        {
+            return;
+        }
+
+        double required = 0;
+        foreach (var point in Markers())
+        {
+            required = Math.Max(required, Math.Max(Math.Abs(point.X) / 5, Math.Abs(point.Y) / 2.5));
+        }
+
+        if (Solution is { } solved)
+        {
+            required = Math.Max(required, Math.Max(
+                Math.Abs(solved.Left.Intercept.ToDouble()), Math.Abs(solved.Right.Intercept.ToDouble())) / 2.5);
+        }
+
+        if (double.IsFinite(required) && required <= 1e290)
+        {
+            viewport = new GraphViewport(required == 0 ? 1 : Math.Max(required, 1e-290));
+        }
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender) =>
+        firstRender && viewport is not null ? initializing = ConnectAsync() : Task.CompletedTask;
+
+    private async Task ConnectAsync()
+    {
+        module = await JavaScript.InvokeAsync<IJSObjectReference>("import", "./js/graph-gestures.js");
+        callback = DotNetObjectReference.Create(this);
+        connection = await module.InvokeAsync<IJSObjectReference>("connect", graphElement, callback);
+    }
+
+    [JSInvokable]
+    public Task MoveGraph(string mode, double horizontal, double vertical)
+    {
+        if (disposed || viewport is null || !double.IsFinite(horizontal) || !double.IsFinite(vertical))
+        {
+            return Task.CompletedTask;
+        }
+
+        return InvokeAsync(() =>
+        {
+            switch (mode)
+            {
+                case "pan": viewport.Pan(horizontal, vertical); break;
+                case "x": viewport.ZoomX(horizontal); break;
+                case "y": viewport.ZoomY(vertical); break;
+            }
+            StateHasChanged();
+        });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        if (initializing is not null)
+        {
+            await initializing;
+        }
+
+        if (connection is not null)
+        {
+            await connection.InvokeVoidAsync("disconnect");
+            await connection.DisposeAsync();
+        }
+
+        callback?.Dispose();
+        if (module is not null)
+        {
+            await module.DisposeAsync();
+        }
+    }
+
+    private IEnumerable<(LineEquation Line, string CssClass)> Lines()
+    {
+        if (Solution is { } result)
+        {
+            yield return (LineEquation.FromFunction(result.Left), "left-line");
+            yield return (LineEquation.FromFunction(result.Right), "right-line");
+        }
+        else if (PlottedLine is { Kind: LineEquationKind.Line } line)
+        {
+            yield return (line, "left-line");
+        }
+    }
+
+    private IEnumerable<PlotPoint> Markers()
+    {
+        if (Solution is { Root: { } root } result)
+        {
+            yield return new(root.ToDouble(), result.Left.At(root).ToDouble());
+        }
+        else if (PlottedLine is { Kind: LineEquationKind.Line } line)
+        {
+            if (line.XIntercept is { } x)
+            {
+                yield return new(x.ToDouble(), 0);
+            }
+
+            if (line.YIntercept is { } y && (y != Rational.Zero || line.XIntercept is null))
+            {
+                yield return new(0, y.ToDouble());
+            }
+        }
+    }
+
+    private string GraphSummary => Solution switch
+    {
+        { Root: { } root } solved => $"Intersection: ({root}, {solved.Left.At(root)})",
+        { Kind: SolutionKind.None } => "The lines are parallel.",
+        { Kind: SolutionKind.Infinite } => "The two lines overlap.",
+        _ => PlottedLine!.Kind switch
+        {
+            LineEquationKind.AllPoints => "Every point in the plane satisfies the equation.",
+            LineEquationKind.NoPoints => "No point in the plane satisfies the equation.",
+            _ => $"Graph of {PlottedLine.DisplayEquation}."
+        }
+    };
+
+    private static (PlotPoint Start, PlotPoint End)? Endpoints(LineEquation line, GraphViewport view)
+    {
+        // Pick the independent coordinate using the displayed slope, which changes when axes zoom separately.
+        if (line.Slope is { } exactSlope && Math.Abs(exactSlope.ToDouble()) * view.XStep <= view.YStep)
+        {
+            double slope = exactSlope.ToDouble();
+            double intercept = line.YIntercept!.ToDouble();
+            double start = slope * view.MinX + intercept;
+            double end = slope * view.MaxX + intercept;
+            return SpanIsVisible(start, end, view.MinY, view.MaxY) ? (new(view.MinX, start), new(view.MaxX, end)) : null;
+        }
+
+        double inverseSlope = (-line.B / line.A).ToDouble();
+        double interceptInX = line.XIntercept!.ToDouble();
+        double left = inverseSlope * view.MinY + interceptInX;
+        double right = inverseSlope * view.MaxY + interceptInX;
+        return SpanIsVisible(left, right, view.MinX, view.MaxX) ? (new(left, view.MinY), new(right, view.MaxY)) : null;
+    }
+
+    private Rational? HiddenParallelGap(GraphViewport view)
+    {
+        if (Solution is not { Kind: SolutionKind.None } parallel ||
+            Endpoints(LineEquation.FromFunction(parallel.Left), view) is null ||
+            Endpoints(LineEquation.FromFunction(parallel.Right), view) is null)
+        {
+            return null;
+        }
+
+        // Subtract exact intercepts before projecting the gap: each intercept can round to the same double.
+        var difference = parallel.Right.Intercept - parallel.Left.Intercept;
+        var gap = difference.Numerator.Sign < 0 ? -difference : difference;
+        double screenSlope = parallel.Left.Slope.ToDouble() * (view.XStep / view.YStep);
+        double gapInPixels = gap.ToDouble() / view.YStep * GraphViewport.GridPixels / double.Hypot(1, screenSlope);
+        return gapInPixels < 4 ? gap : null;
+    }
+
+    private static bool InRange(double value, double minimum, double maximum) => value >= minimum && value <= maximum;
+
+    private static bool SpanIsVisible(double first, double last, double minimum, double maximum) =>
+        double.IsFinite(first) && double.IsFinite(last) && Math.Max(first, last) >= minimum && Math.Min(first, last) <= maximum;
+
+    private static string Coordinate(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+    private static string TickLabel(double value) => value.ToString("G6", CultureInfo.InvariantCulture);
+
+    private readonly record struct PlotPoint(double X, double Y);
+}

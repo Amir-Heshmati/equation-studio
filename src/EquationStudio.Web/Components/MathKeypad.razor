@@ -1,0 +1,38 @@
+<details data-math-keypad class="math-keypad">
+    <summary>Math keypad</summary>
+    <div class="math-keys" role="group" aria-label="Math keypad keys">
+        <div class="math-numbers" role="group" aria-label="Numbers">
+            @foreach (char digit in DigitOrder)
+            {
+                <button type="button" class="@(digit == '0' ? "math-key math-zero" : "math-key")"
+                        data-math-key="@digit">@digit</button>
+            }
+            <button type="button" class="math-key" data-math-key="." aria-label="Decimal point">.</button>
+        </div>
+        <div class="math-symbols" role="group" aria-label="Variables, operators and editing">
+            <button type="button" class="math-key math-key-accent" data-math-key="x" aria-label="Variable x">x</button>
+            <button type="button" class="math-key math-key-accent" data-math-key="y" aria-label="Variable y">y</button>
+            <button type="button" class="math-key math-key-accent" data-math-key="=" aria-label="Equals">=</button>
+            <button type="button" class="math-key" data-math-edit="backspace" aria-label="Delete previous character">⌫</button>
+            @foreach (var key in Symbols)
+            {
+                <button type="button" class="@(key.Emphasis ? "math-key math-key-accent" : "math-key")"
+                        data-math-key="@key.Value" aria-label="@key.Label">@key.Value</button>
+            }
+            <button type="button" class="math-key" data-math-edit="clear" aria-label="Clear equation">Clear</button>
+        </div>
+    </div>
+</details>
+<p class="math-input-feedback" data-math-feedback role="status"></p>
+
+@code {
+    private const string DigitOrder = "7894561230";
+    private static readonly Key[] Symbols =
+    [
+        new("+", "Plus", true), new("−", "Minus", true), new("×", "Multiply", true), new("÷", "Divide", true),
+        new("(", "Open parenthesis"), new(")", "Close parenthesis"), new("[", "Open bracket"), new("]", "Close bracket"),
+        new("{", "Open brace"), new("}", "Close brace")
+    ];
+
+    private sealed record Key(string Value, string Label, bool Emphasis = false);
+}

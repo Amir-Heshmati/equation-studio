@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EquationStudio.Core/EquationStudio.Core.csproj" />
+    <Project Path="src/EquationStudio.Web/EquationStudio.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EquationStudio.Tests/EquationStudio.Tests.csproj" />
+  </Folder>
+</Solution>

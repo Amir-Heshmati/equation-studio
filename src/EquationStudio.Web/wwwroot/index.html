@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Solve linear equations step by step and see both sides on an interactive graph.">
+    <title>Equation Studio</title>
+    <base href="./">
+    <link rel="preload" id="webassembly">
+    <link rel="stylesheet" href="css/app.css">
+    <script type="importmap"></script>
+</head>
+<body>
+    <div id="app">
+        <p class="loading" role="status">Loading Equation Studio…</p>
+    </div>
+    <div id="blazor-error-ui" role="alert">
+        Equation Studio ran into a problem. <a href="." class="reload">Reload</a>
+    </div>
+    <noscript>Enable JavaScript to run the solver in your browser.</noscript>
+    <script type="module" src="js/math-input.js"></script>
+    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+</body>
+</html>

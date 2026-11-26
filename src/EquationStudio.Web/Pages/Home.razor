@@ -1,0 +1,243 @@
+@page "/"
+@using EquationStudio.Core
+@using EquationStudio.Web.Components
+
+<PageTitle>Equation Studio</PageTitle>
+
+<header class="site-header">
+    <div class="site-header-inner">
+        <a class="wordmark" href="."><span class="mark" aria-hidden="true">=</span> Equation Studio</a>
+        <a class="skip-link" href="#workspace">Skip to equation solver</a>
+    </div>
+</header>
+
+<main id="workspace" class="workspace">
+    <header class="intro">
+        <h1>Linear equation solver</h1>
+        <p>Solve an equation step by step or plot a line on the coordinate plane.</p>
+    </header>
+
+    <div class="workspace-grid">
+        <div class="solver-panel">
+            <form data-math-entry @onsubmit="ProcessInput" @onsubmit:preventDefault>
+                <label for="equation">Equation or expression</label>
+                <div class="input-row">
+                    <input id="equation" data-math-input inputmode="none" @bind="equation" @bind:event="oninput"
+                           maxlength="@LinearEquationSolver.MaximumInputLength"
+                           autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="equation-hint"
+                           aria-invalid="@(error is null ? "false" : "true")" />
+                    <button class="button primary" type="submit">@(PlotInput ? "Plot" : "Solve") <span aria-hidden="true">→</span></button>
+                </div>
+                <p id="equation-hint" class="hint">Use x, y, numbers and math symbols. Try 2x + 5.</p>
+                <MathKeypad />
+                @if (!PlotInput)
+                {
+                    <button class="text-button" type="button" @onclick="PlotAsLine">Plot as a line</button>
+                }
+                @if (error is not null)
+                {
+                    <p class="error" role="alert">@error</p>
+                }
+            </form>
+            <div class="examples">
+                <span>Examples</span>
+                @foreach (string example in ExampleEquations)
+                {
+                    <button class="chip" type="button" @onclick="() => SetExample(example)">@example</button>
+                }
+                <button class="chip" type="button" @onclick="ShowVerticalExample">Vertical line</button>
+            </div>
+            <details class="input-guide">
+                <summary>Supported inputs</summary>
+                <ul>
+                    <li><strong>Plot:</strong> 2x + 5, y = 2x + 5, or 2x + 3y = 6. If you paste f(x) notation, it becomes y =.</li>
+                    <li><strong>Vertical line:</strong> enter x = 3, then choose Plot as a line. Use y = 3 for a horizontal line.</li>
+                    <li><strong>Solve:</strong> any supported linear equation in x, such as 3(x − 2) = x + 4.</li>
+                    <li>Use whole numbers, decimals, fractions, signed terms, matching brackets, and +, −, × or ÷. Write 2(x + 1) or 2 * (x + 1).</li>
+                </ul>
+            </details>
+
+            <section class="result" aria-labelledby="solution-heading" aria-live="polite">
+                <h2 id="solution-heading">@(plottedLine is null ? "Solution" : "Line equation")</h2>
+                @if (plottedLine is { } line)
+                {
+                    <div class="answer">
+                        <strong>@line.DisplayEquation</strong>
+                        @if (line.Kind == LineEquationKind.Line)
+                        {
+                            <p>Slope: <span class="math">@(line.Slope?.ToString() ?? "undefined")</span></p>
+                            @if (line.XIntercept is { } x)
+                            {
+                                <p>x-intercept: <span class="math">(@x, 0)</span></p>
+                            }
+                            @if (line.YIntercept is { } y)
+                            {
+                                <p>y-intercept: <span class="math">(0, @y)</span></p>
+                            }
+                        }
+                        else
+                        {
+                            <p>@(line.Kind == LineEquationKind.AllPoints ? "Every point satisfies this equation." : "No point satisfies this equation.")</p>
+                        }
+                    </div>
+                }
+                else if (solution is { } result)
+                {
+                    <div class="answer">
+                        @switch (result.Kind)
+                        {
+                            case SolutionKind.Unique:
+                                <strong>x = @result.Root</strong>
+                                <p>Check: both sides equal <span class="math">@result.Left.At(result.Root!)</span> at this value.</p>
+                                break;
+                            case SolutionKind.None:
+                                <strong>No solution</strong>
+                                <p>The variable terms cancel and the constants differ.</p>
+                                break;
+                            case SolutionKind.Infinite:
+                                <strong>Infinitely many solutions</strong>
+                                <p>Both sides are equal for every value of x.</p>
+                                break;
+                        }
+                    </div>
+                    @if (result.Steps.Count > 0)
+                    {
+                        <ol class="steps">
+                            @foreach (var step in result.Steps)
+                            {
+                                <li>
+                                    <span>@Describe(step)</span>
+                                    <div class="math step-equation">@step.After</div>
+                                </li>
+                            }
+                        </ol>
+                    }
+                }
+                else
+                {
+                    <p>@(practice is null ? "Enter a valid equation or function to see the result." : $"Practice: {PracticeName}. Solve it when you’re ready.")</p>
+                }
+            </section>
+        </div>
+
+        <section class="graph-panel" aria-labelledby="graph-heading">
+            <div class="graph-header">
+                <h2 id="graph-heading">Graph</h2>
+                @if (solution is not null)
+                {
+                    <div class="legend"><span>Left side</span><span>Right side</span></div>
+                }
+                else if (plottedLine?.Kind == LineEquationKind.Line)
+                {
+                    <div class="legend"><span>Line</span></div>
+                }
+            </div>
+            @if (solution is not null || plottedLine is not null)
+            {
+                <EquationGraph @key="((object?)solution ?? plottedLine)" Solution="solution" PlottedLine="plottedLine" />
+            }
+            else
+            {
+                <div class="empty-graph">Enter an equation or function to see its graph.</div>
+            }
+            <div class="practice">
+                <div>
+                    <h3>Practice</h3>
+                    <p>Try both sides, parentheses, then fractions.</p>
+                </div>
+                <button class="button secondary" type="button" @onclick="NewPractice">Try a harder one <span aria-hidden="true">↗</span></button>
+            </div>
+        </section>
+    </div>
+</main>
+
+@code {
+    private static readonly string[] ExampleEquations = ["2x + 3 = 11", "2x + 5", "2x + 3y = 6", "x / 3 = 1 / 2"];
+    private string equation = ExampleEquations[0];
+    private string? error;
+    private LinearSolution? solution;
+    private LineEquation? plottedLine;
+    private PracticeLevel? practice;
+
+    private bool PlotInput => LineEquation.MatchesPlotInput(equation);
+
+    protected override void OnInitialized() => ProcessInput();
+
+    private void ProcessInput() => Evaluate(plot: PlotInput);
+
+    private void PlotAsLine() => Evaluate(plot: true);
+
+    private void Evaluate(bool plot)
+    {
+        plottedLine = null;
+        solution = null;
+        error = null;
+
+        try
+        {
+            if (plot)
+            {
+                plottedLine = LineEquation.Parse(equation);
+            }
+            else
+            {
+                solution = LinearEquationSolver.Solve(equation);
+            }
+        }
+        catch (EquationInputException exception)
+        {
+            error = exception.Message;
+        }
+    }
+
+    private void SetExample(string example)
+    {
+        equation = example;
+        practice = null;
+        ProcessInput();
+    }
+
+    private void ShowVerticalExample()
+    {
+        equation = "x = 3";
+        practice = null;
+        PlotAsLine();
+    }
+
+    private string PracticeName => practice switch
+    {
+        PracticeLevel.BothSides => "variables on both sides",
+        PracticeLevel.Parentheses => "equations with parentheses",
+        _ => "equations with fractions"
+    };
+
+    private void NewPractice()
+    {
+        practice = practice switch
+        {
+            null => PracticeLevel.BothSides,
+            PracticeLevel.BothSides => PracticeLevel.Parentheses,
+            _ => PracticeLevel.Fractions
+        };
+        string nextEquation;
+        do
+        {
+            nextEquation = LinearPractice.Create(practice.Value, Random.Shared).Equation;
+        }
+        while (nextEquation == equation);
+
+        equation = nextEquation;
+        solution = null;
+        plottedLine = null;
+        error = null;
+    }
+
+    private static string Describe(SolutionStep step) => step.Operation switch
+    {
+        StepOperation.Simplify => "Simplify both sides",
+        StepOperation.SubtractVariable => $"Subtract ({step.Operand})x from both sides",
+        StepOperation.SubtractConstant => $"Subtract ({step.Operand}) from both sides",
+        StepOperation.Divide => $"Divide both sides by {step.Operand}",
+        _ => throw new ArgumentOutOfRangeException(nameof(step))
+    };
+}
