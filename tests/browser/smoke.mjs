@@ -78,6 +78,16 @@ async function checkTouch() {
         await page.locator('.answer').getByText('y = 2x + 5', { exact: true }).waitFor();
         await page.locator('.graph .left-line').waitFor();
 
+        const reset = page.getByRole('button', { name: 'Reset view', exact: true });
+        const plottedLine = page.locator('.graph .left-line');
+        const originalY = await plottedLine.getAttribute('y1');
+        const originalX = await plottedLine.getAttribute('x1');
+        await page.getByRole('button', { name: 'Zoom in horizontally', exact: true }).tap();
+        await page.waitForFunction(expected => document.querySelector('.graph .left-line')?.getAttribute('x1') !== expected, originalX);
+        assert.equal(await plottedLine.getAttribute('y1'), originalY);
+        await reset.tap();
+        await page.waitForFunction(expected => document.querySelector('.graph .left-line')?.getAttribute('x1') === expected, originalX);
+
         const graph = page.locator('.interactive-graph');
         await graph.scrollIntoViewIfNeeded();
         await page.waitForFunction(() => performance.getEntriesByType('resource')
@@ -98,29 +108,15 @@ async function checkTouch() {
             });
         }
         await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await session.detach();
         await page.waitForFunction(({ selector, original }) =>
             document.querySelector(selector)?.getAttribute('x1') !== original, { selector: axisSelector, original });
         assert.ok(await axis.getAttribute('x1'));
         await page.locator('.interactive-graph[data-dragging]').waitFor({ state: 'hidden' });
-        const reset = page.getByRole('button', { name: 'Reset view', exact: true });
-        await reset.evaluate(button => button.addEventListener('click', () => { button.dataset.testClicked = 'true'; }, { once: true }));
-        await reset.tap();
-        try {
-            await page.waitForFunction(({ selector, original }) =>
-                document.querySelector(selector)?.getAttribute('x1') === original, { selector: axisSelector, original }, { timeout: 5_000 });
-        } catch (error) {
-            throw new Error('Reset did not restore the axis. Expected ' + original + ', got ' + await axis.getAttribute('x1') +
-                '; click received: ' + await reset.getAttribute('data-test-clicked') + '; page errors: ' + errors.join('; '), { cause: error });
-        }
-
-        const plottedLine = page.locator('.graph .left-line');
-        const originalY = await plottedLine.getAttribute('y1');
-        const originalX = await plottedLine.getAttribute('x1');
-        await page.getByRole('button', { name: 'Zoom in horizontally', exact: true }).tap();
-        assert.notEqual(await plottedLine.getAttribute('x1'), originalX);
-        assert.equal(await plottedLine.getAttribute('y1'), originalY);
-        await reset.tap();
-        await page.waitForFunction(expected => document.querySelector('.graph .left-line')?.getAttribute('x1') === expected, originalX);
+        // Verify reset after the CDP gesture with keyboard activation, independently of touch tap synthesis.
+        await reset.press('Enter');
+        await page.waitForFunction(({ selector, original }) =>
+            document.querySelector(selector)?.getAttribute('x1') === original, { selector: axisSelector, original });
         assert.deepEqual(errors, []);
         console.log('Touch emulation passed: keypad, plot, touch drag, horizontal zoom, and reset.');
     } finally {

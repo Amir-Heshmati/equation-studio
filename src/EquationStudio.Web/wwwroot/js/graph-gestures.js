@@ -72,6 +72,9 @@ export function connect(svg, dotnet) {
         if (event.type === 'pointerup') move(event);
         activePointer = null;
         delete svg.dataset.dragging;
+        if (event.type !== 'lostpointercapture' && svg.hasPointerCapture(event.pointerId)) {
+            svg.releasePointerCapture(event.pointerId);
+        }
     }
 
     function keydown(event) {
