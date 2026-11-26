@@ -10,6 +10,7 @@ const browser = await chromium.launch();
 
 try {
     await checkDesktop();
+    await checkRapidGraphChanges();
     await checkTouch();
 } finally {
     await browser.close();
@@ -54,6 +55,65 @@ async function checkDesktop() {
         assert.deepEqual(errors, []);
         console.log('Desktop passed: exact fractions, near-parallel warning and gap, division by zero, vertical plot, and input filter.');
     } finally {
+        await page.close();
+    }
+}
+
+async function checkRapidGraphChanges() {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 920 } });
+    const errors = [];
+    const resumeModule = Promise.withResolvers();
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => {
+        if (message.type() === 'error' && /addEventListener|graph-gestures|Graph input failed|Unhandled exception/i.test(message.text())) {
+            errors.push(message.text());
+        }
+    });
+
+    await page.route('**/js/graph-gestures.js', async route => {
+        await resumeModule.promise;
+        await route.continue();
+    });
+
+    try {
+        const moduleRequest = page.waitForRequest('**/js/graph-gestures.js');
+        await openApp(page);
+        await moduleRequest;
+        const firstGraph = await page.locator('.interactive-graph').elementHandle();
+
+        // Replace several graphs before their shared module import can complete.
+        await enter(page, 'x / 3 = 1 / 2', 'Solve');
+        await enter(page, 'y = 2x + 5', 'Plot');
+        await enter(page, 'x = 3', 'Plot as a line');
+        await enter(page, '2x = 18', 'Solve');
+        await page.locator('.answer').getByText('x = 9', { exact: true }).waitFor();
+        assert.ok(firstGraph);
+        assert.equal(await firstGraph.evaluate(svg => svg.isConnected), false);
+
+        resumeModule.resolve();
+        const graph = page.locator('.interactive-graph[data-graph-ready]');
+        await graph.waitFor();
+        await graph.scrollIntoViewIfNeeded();
+        const axis = graph.locator('.axis-grab[data-graph-gesture="y"]');
+        const centered = await axis.getAttribute('x1');
+        const box = await graph.boundingBox();
+        assert.ok(box);
+        const x = box.x + box.width * 0.25;
+        const y = box.y + box.height * 0.35;
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        await page.mouse.move(x + 45, y + 10, { steps: 4 });
+        await page.mouse.up();
+        await page.waitForFunction(initial =>
+            document.querySelector('.axis-grab[data-graph-gesture="y"]')?.getAttribute('x1') !== initial, centered);
+        await page.getByRole('button', { name: 'Reset view', exact: true }).click();
+        await page.waitForFunction(initial =>
+            document.querySelector('.axis-grab[data-graph-gesture="y"]')?.getAttribute('x1') === initial, centered);
+        await page.locator('#blazor-error-ui').waitFor({ state: 'hidden' });
+        assert.deepEqual(errors, []);
+        console.log('Rapid graph changes passed: pending import, detached graph, no console errors, drag and reset.');
+    } finally {
+        resumeModule.resolve();
         await page.close();
     }
 }

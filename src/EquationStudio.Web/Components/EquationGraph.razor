@@ -171,6 +171,12 @@
     private async Task ConnectAsync()
     {
         module = await JavaScript.InvokeAsync<IJSObjectReference>("import", "./js/graph-gestures.js");
+        if (disposed)
+        {
+            // A solution change can remove this chart while the module is loading.
+            return;
+        }
+
         callback = DotNetObjectReference.Create(this);
         connection = await module.InvokeAsync<IJSObjectReference>("connect", graphElement, callback);
     }

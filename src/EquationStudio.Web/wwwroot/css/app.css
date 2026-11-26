@@ -93,7 +93,8 @@ input[aria-invalid="true"] { border-color: #a13425; }
 .legend span + span::before { border-top: 2px dashed #f2ad8e; }
 .graph { padding: .2rem clamp(.3rem, 1.3vw, .85rem) .85rem; }
 .graph svg { display: block; width: 100%; }
-.interactive-graph { cursor: grab; touch-action: none; user-select: none; }
+.interactive-graph { touch-action: none; user-select: none; }
+.interactive-graph[data-graph-ready] { cursor: grab; }
 .interactive-graph:focus-visible { outline-offset: -3px; }
 .interactive-graph[data-dragging="pan"] { cursor: grabbing; }
 .interactive-graph [data-graph-gesture="x"], .interactive-graph[data-dragging="x"] { cursor: ew-resize; }

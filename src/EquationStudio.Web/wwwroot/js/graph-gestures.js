@@ -1,4 +1,9 @@
 export function connect(svg, dotnet) {
+    // The renderer can remove the SVG between passing the element reference and running this function.
+    if (!svg?.isConnected) {
+        return { cancelMotion() {}, disconnect() {} };
+    }
+
     const controller = new AbortController();
     const options = { signal: controller.signal };
     const changes = [];
@@ -96,6 +101,7 @@ export function connect(svg, dotnet) {
     svg.addEventListener('pointercancel', end, options);
     svg.addEventListener('lostpointercapture', end, options);
     svg.addEventListener('keydown', keydown, options);
+    svg.dataset.graphReady = 'true';
 
     function stopPendingMotion() {
         if (frame) cancelAnimationFrame(frame);
@@ -117,6 +123,7 @@ export function connect(svg, dotnet) {
         },
         disconnect() {
             controller.abort();
+            delete svg.dataset.graphReady;
             stopPendingMotion();
         }
     };
