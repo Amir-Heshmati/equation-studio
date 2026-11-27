@@ -44,6 +44,21 @@ jobs:
             sleep 0.5
           done
           node tests/browser/smoke.mjs http://127.0.0.1:5274/equation-studio/ "$RUNNER_TEMP/site/equation-studio/preview.png"
+      - name: Add site ownership verification file
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          VERIFICATION_FILE: ${{ secrets.SEARCH_CONSOLE_VERIFICATION_FILE }}
+        run: |
+          node <<'NODE'
+          const { writeFileSync } = require('node:fs');
+          const { join } = require('node:path');
+          const value = process.env.VERIFICATION_FILE;
+          if (!value) process.exit(0);
+          const file = Buffer.from(value, 'base64');
+          const match = /^\uFEFF?google-site-verification: (google[0-9a-f]+\.html)$/.exec(file.toString('utf8').trimEnd());
+          if (!match) throw new Error('Invalid site ownership verification file.');
+          writeFileSync(join(process.env.RUNNER_TEMP, 'site', 'equation-studio', match[1]), file, { flag: 'wx' });
+          NODE
       - uses: actions/upload-pages-artifact@v4
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         with:
